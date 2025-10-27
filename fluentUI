@@ -8,38 +8,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local dataRemoteEvent = ReplicatedStorage:WaitForChild("BridgeNet2"):WaitForChild("dataRemoteEvent")
 
--- Coordinates
+-- ---------- Coordinates ----------
 local castleCFrame = CFrame.new(432.6329, 4384.6372, -1898.6741)
 local desertCFrame = CFrame.new(463.8988, 4383.7646, -1888.2440)
 local bossRushCFrame = CFrame.new(216.035507, 1594.49414, -4315.56738)
 
-local worldCoordinates = {
-    ["AotWorld"] = Vector3.new(-8375.900390625, 37.72277069091797, -1800.907470703125),
-    ["World Arena"] = Vector3.new(1650.9036865234375, 21.886470794677734, -66.51301574707031),
-    ["BcWorld"] = Vector3.new(198.33868408203125, 36.207679748535156, 4296.109375),
-    ["BleachWorld"] = Vector3.new(2629.0126953125, 42.96100616455078, -2628.310546875),
-    ["ChainsawWorld"] = Vector3.new(214.68453979492188, 30.3960934765625, -4301.60546875),
-    ["DBWorld"] = Vector3.new(-2549.53515625, 24.698104858398438, 5857.16650390625),
-    ["DSWorld"] = Vector3.new(-6178.115234375, 23.3775634765625, 1162.912109375),
-    ["DanWorld"] = Vector3.new(-3345.234130859375, 19.462051391601562, -101.47228240966797),
-    ["FrierenWorld"] = Vector3.new(-4546.130859375, 41.52750015258789, -7541.955078125),
-    ["HxHWorld"] = Vector3.new(-4779.986328125, 33.77476501464844, -2668.45849609375),
-    ["JJKWorld"] = Vector3.new(561.7188720703125, 28.70819091796875, 4455.97509765625),
-    ["JeJuEvent"] = Vector3.new(3987.016845703125, 56.646728515625, 3247.959716796875),
-    ["JojoWorld"] = Vector3.new(4816.31640625, 27.442340850830078, -120.22998046875),
-    ["JungleEvent"] = Vector3.new(-1453.1409912109375, 18.44970703125, 5660.87109375),
-    ["KaijuWorld"] = Vector3.new(4444.1357421875, 18.1916561126709, 119.92483520507812),
-    ["NarutoWorld"] = Vector3.new(-3380.2373046875, 27.760528564453125, 2257.261962890625),
-    ["OPMWorld"] = Vector3.new(3299.468017578125, 22.894081115722656, 6342.1904296875),
-    ["OPWorld"] = Vector3.new(-2851.106201171875, 46.89878845214844, -2011.395263671875),
-    ["ShieldWorld"] = Vector3.new(2401.5673828125, 28.495229721069336, -3764.9169921875),
-    ["SlimeWorld"] = Vector3.new(-1289.81689453125, 22.41050910949707, -4613.44775390625),
-    ["Solo2World"] = Vector3.new(-219.01434326171875, 22.122146606445312, -15.402612686157227),
-    ["SoloWorld"] = Vector3.new(577.96826171875, 25.934627532958984, 261.4522705078125),
-    ["WinterEvent"] = Vector3.new(4788.8017578125, 27.2264404296875, -2218.416015625)
-}
-
--- Flags
+-- ---------- Flags ----------
 local standCastleEnabled = false
 local standDesertEnabled = false
 local autoRestartCastle = false
@@ -47,11 +21,10 @@ local autoRestartDesert = false
 local autoRestartLabyrinth = false
 local autoRestartBossRush = false
 local hospRaidEnabled = false
-local minimizeWindowEnabled = false
+local autoExecHub = _G.autoExecHub ~= false
 local bossRushDifficulty = "Normal"
-local selectedWorld = nil
 
--- Helpers
+-- ---------- Helpers ----------
 local function safeStandAt(cf)
     local char = player.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -63,34 +36,47 @@ local function fireSafe(args)
     pcall(function() dataRemoteEvent:FireServer(unpack(args)) end)
 end
 
-local function teleportToWorld(worldName)
-    local pos = worldCoordinates[worldName]
-    if not pos then return end
-    local char = player.Character or player.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart",5)
-    if hrp then hrp.CFrame = CFrame.new(pos) end
+local function safeRejoin(joinFunction)
+    task.spawn(function()
+        local success = false
+        for i = 1,5 do
+            task.wait(math.random(3,6))
+            local ok, err = pcall(joinFunction)
+            if ok then
+                success = true
+                break
+            end
+        end
+    end)
 end
 
-local function isInHospRaid()
-    local ws = game:GetService("Workspace")
-    return ws:FindFirstChild("__MAP") or ws:FindFirstChild("RaidBoss")
+-- ---------- Mode Functions ----------
+local function startCastle()
+    fireSafe({{{Event="InfiniteCastleAction", Action="Create"}, "\014"}})
+    task.wait(1)
+    fireSafe({{{Dungeon=3604563306, Event="InfiniteCastleAction", Action="Start"}, "\014"}})
+    if standCastleEnabled then safeStandAt(castleCFrame) end
+end
+
+local function startDesert()
+    fireSafe({{{Event="InfiniteModeAction", Action="Create"}, "\014"}})
+    task.wait(1)
+    fireSafe({{{Dungeon=3604563306, Event="InfiniteModeAction", Action="Start"}, "\014"}})
+    if standDesertEnabled then safeStandAt(desertCFrame) end
+end
+
+local function startBossRush()
+    fireSafe({{{Dungeon=3604563306, Action="Start", Diff=bossRushDifficulty, Event="BossRushAction"}, "\015"}})
+    safeStandAt(bossRushCFrame)
 end
 
 local function joinHospRaid()
-    if isInHospRaid() then return end
-    local args = {
-        {
-            {
-                Event = "HLRaidAction",
-                Action = "Join"
-            },
-            "\004"
-        }
-    }
-    fireSafe(args)
+    local ws = game:GetService("Workspace")
+    if ws:FindFirstChild("__MAP") or ws:FindFirstChild("RaidBoss") then return end
+    fireSafe({{{Event="HLRaidAction", Action="Join"}, "\004"}})
 end
 
--- Create Hub
+-- ---------- Create Fluent Hub ----------
 local hubCreated = false
 local function createHub()
     if hubCreated then return end
@@ -100,127 +86,74 @@ local function createHub()
         Title = "xnxsmoke Hub",
         SubTitle = "by xnxsmoke",
         TabWidth = 160,
-        Size = UDim2.fromOffset(580, 460),
+        Size = UDim2.fromOffset(580,460),
         Acrylic = true,
         Theme = "Dark",
         MinimizeKey = Enum.KeyCode.LeftControl
     })
 
     local Tabs = {
-        InfCastle = Window:AddTab({Title = "InfCastle"}),
-        InfDesert = Window:AddTab({Title = "InfDesert"}),
-        Lab = Window:AddTab({Title = "InfLab"}),
-        BossRush = Window:AddTab({Title = "BossRush"}),
-        HospRaid = Window:AddTab({Title = "HospRaid"}),
-        Teleport = Window:AddTab({Title = "Teleport"}),
-        Misc = Window:AddTab({Title = "Misc"})
+        InfCastle = Window:AddTab({Title="InfCastle"}),
+        InfDesert = Window:AddTab({Title="InfDesert"}),
+        BossRush = Window:AddTab({Title="BossRush"}),
+        HospRaid = Window:AddTab({Title="HospRaid"}),
+        Misc = Window:AddTab({Title="Misc"})
     }
 
     -- InfCastle
-    Tabs.InfCastle:AddButton({Title = "Start Infinite Castle", Callback = function()
-        fireSafe({ { { Event = "InfiniteCastleAction", Action = "Create" }, "\014" } })
-        task.wait(1)
-        fireSafe({ { { Dungeon = 3604563306, Event = "InfiniteCastleAction", Action = "Start" }, "\014" } })
-        if standCastleEnabled then safeStandAt(castleCFrame) end
-    end})
-    Tabs.InfCastle:AddToggle("StandCastle", {Title = "Stand in the Middle", Default = false}):OnChanged(function(v)
+    Tabs.InfCastle:AddButton({Title="Start Infinite Castle", Callback=startCastle})
+    Tabs.InfCastle:AddToggle("StandCastle",{Title="Stand in the Middle", Default=false}):OnChanged(function(v)
         standCastleEnabled = v
         if v then safeStandAt(castleCFrame) end
     end)
-    Tabs.InfCastle:AddToggle("AutoRestartCastle", {Title = "Auto Restart on Portal Destroy", Default = false}):OnChanged(function(v)
+    Tabs.InfCastle:AddToggle("AutoRestartCastle",{Title="Auto Restart on Portal Destroy", Default=false}):OnChanged(function(v)
         autoRestartCastle = v
     end)
 
     -- InfDesert
-    Tabs.InfDesert:AddButton({Title = "Start Infinite Desert", Callback = function()
-        fireSafe({ { { Event = "InfiniteModeAction", Action = "Create" }, "\014" } })
-        task.wait(1)
-        fireSafe({ { { Dungeon = 3604563306, Event = "InfiniteModeAction", Action = "Start" }, "\014" } })
-        if standDesertEnabled then safeStandAt(desertCFrame) end
-    end})
-    Tabs.InfDesert:AddToggle("StandDesert", {Title = "Stand in the Middle", Default = false}):OnChanged(function(v)
+    Tabs.InfDesert:AddButton({Title="Start Infinite Desert", Callback=startDesert})
+    Tabs.InfDesert:AddToggle("StandDesert",{Title="Stand in the Middle", Default=false}):OnChanged(function(v)
         standDesertEnabled = v
         if v then safeStandAt(desertCFrame) end
     end)
-    Tabs.InfDesert:AddToggle("AutoRestartDesert", {Title = "Auto Restart on Portal Destroy", Default = false}):OnChanged(function(v)
+    Tabs.InfDesert:AddToggle("AutoRestartDesert",{Title="Auto Restart on Portal Destroy", Default=false}):OnChanged(function(v)
         autoRestartDesert = v
     end)
 
-    -- Lab
-    Tabs.Lab:AddButton({Title = "Start Infinite Labyrinth", Callback = function()
-        fireSafe({ { { Event = "InfiniteLabyrinthAction", Action = "Create" }, "\014" } })
-        task.wait(1)
-        fireSafe({ { { Dungeon = 3604563306, Event = "InfiniteLabyrinthAction", Action = "Start" }, "\014" } })
-    end})
-    Tabs.Lab:AddToggle("AutoRestartLabyrinth", {Title = "Auto Restart on Portal Destroy", Default = false}):OnChanged(function(v)
-        autoRestartLabyrinth = v
-    end)
-
     -- BossRush
-    Tabs.BossRush:AddDropdown("BossRushDifficulty", {
+    local difficultyDropdown = Tabs.BossRush:AddDropdown("BossRushDifficulty", {
         Title = "Select Difficulty",
         Values = {"Easy","Normal","Hard","Insane"},
+        Multi = false,
         Default = 2
-    }):OnChanged(function(value)
-        bossRushDifficulty = value
-    end)
-    Tabs.BossRush:AddButton({Title = "Start BossRush", Callback = function()
-        local args = {
-            {
-                {
-                    Dungeon = 3604563306,
-                    Action = "Start",
-                    Diff = bossRushDifficulty,
-                    Event = "BossRushAction"
-                },
-                "\015"
-            }
-        }
-        fireSafe(args)
-        safeStandAt(bossRushCFrame)
-    end})
-    Tabs.BossRush:AddToggle("AutoRestartBossRush", {Title = "Auto Restart on Rush Ended", Default = false}):OnChanged(function(v)
+    })
+    difficultyDropdown:OnChanged(function(v) bossRushDifficulty = v end)
+
+    Tabs.BossRush:AddButton({Title="Start BossRush", Callback=startBossRush})
+    Tabs.BossRush:AddToggle("AutoRestartBossRush",{Title="Auto-Restart on Rush Ended", Default=false}):OnChanged(function(v)
         autoRestartBossRush = v
     end)
-    Tabs.BossRush:AddToggle("StandBossRush", {Title = "Stand in the Middle", Default = false}):OnChanged(function(v)
+    Tabs.BossRush:AddToggle("StandBossRush",{Title="Stand in the Middle", Default=false}):OnChanged(function(v)
         if v then safeStandAt(bossRushCFrame) end
     end)
 
     -- HospRaid
-    Tabs.HospRaid:AddToggle("AutoJoinHospRaid", {Title = "Auto Join HospRaid", Default = false}):OnChanged(function(v)
+    Tabs.HospRaid:AddToggle("AutoJoinHospRaid",{Title="Auto Join HospRaid", Default=false}):OnChanged(function(v)
         hospRaidEnabled = v
         if v then
             task.spawn(function()
                 while hospRaidEnabled do
                     task.wait(5)
-                    if not isInHospRaid() then joinHospRaid() end
+                    joinHospRaid()
                 end
             end)
         end
     end)
 
-    -- Teleport
-    local worldDropdown = Tabs.Teleport:AddDropdown("WorldDropdown", {
-        Title = "Select World",
-        Values = (function()
-            local t = {}
-            for k,_ in pairs(worldCoordinates) do table.insert(t,k) end
-            return t
-        end)(),
-        Multi = false,
-        Default = 1
-    })
-    worldDropdown:OnChanged(function(value)
-        selectedWorld = value
-    end)
-    Tabs.Teleport:AddButton({Title = "Teleport to World", Callback = function()
-        if selectedWorld then teleportToWorld(selectedWorld) end
-    end})
-
     -- Misc
-    Tabs.Misc:AddToggle("MinimizeWindow", {Title = "Minimize Window", Default = false}):OnChanged(function(v)
-        minimizeWindowEnabled = v
-        Window:SetVisible(not v)
+    Tabs.Misc:AddToggle("AutoExec",{Title="Auto-Execute Hub", Default=autoExecHub}):OnChanged(function(v)
+        autoExecHub = v
+        _G.autoExecHub = v
     end)
     Tabs.Misc:AddParagraph({Title="Info", Content="Hub in beta testing"})
 
@@ -234,38 +167,35 @@ local function createHub()
     SaveManager:BuildConfigSection(Tabs.Misc)
 
     Window:SelectTab(1)
-    Fluent:Notify({Title = "xnxsmoke Hub", Content = "Loaded successfully!", Duration = 6})
+    Fluent:Notify({Title="xnxsmoke Hub", Content="Loaded successfully!", Duration=6})
     SaveManager:LoadAutoloadConfig()
 end
 
--- Auto-execute
-createHub()
+-- ---------- Auto-Execute ----------
+local function detectMode()
+    local ws = game:GetService("Workspace")
+    if ws:FindFirstChild("__MAP") then return "HospRaid"
+    elseif ws:FindFirstChild("PortalCastle") then return "InfCastle"
+    elseif ws:FindFirstChild("PortalDesert") then return "InfDesert"
+    elseif ws:FindFirstChild("BossRushPortal") then return "BossRush"
+    else return nil
+    end
+end
 
--- Auto-restart and respawn logic
-player.CharacterAdded:Connect(function()
-    task.wait(1)
-    if standCastleEnabled then safeStandAt(castleCFrame) end
-    if standDesertEnabled then safeStandAt(desertCFrame) end
-end)
-
-dataRemoteEvent.OnClientEvent:Connect(function(...)
-    local args = {...}
-    local function recursiveCheck(tbl)
-        if type(tbl) ~= "table" then return end
-        for k,v in pairs(tbl) do
-            if type(v) == "table" then
-                recursiveCheck(v)
-            elseif k == "Message" and type(v) == "string" then
-                local msg = v:upper()
-                if msg:find("PORTAL DESTROYED") then
-                    if autoRestartCastle then Tabs.InfCastle.Flags["StandCastle"].Callback(true) end
-                    if autoRestartDesert then Tabs.InfDesert.Flags["StandDesert"].Callback(true) end
-                    if autoRestartLabyrinth then Tabs.Lab.Flags["AutoRestartLabyrinth"].Callback(true) end
-                elseif msg:find("RUSH ENDED") then
-                    if autoRestartBossRush then Tabs.BossRush.Flags["AutoRestartBossRush"].Callback(true) end
-                end
+local function autoExecListener()
+    player.CharacterAdded:Connect(function()
+        task.wait(1)
+        if autoExecHub then
+            local mode = detectMode()
+            if mode == "InfCastle" then startCastle()
+            elseif mode == "InfDesert" then startDesert()
+            elseif mode == "BossRush" then startBossRush()
+            elseif mode == "HospRaid" then joinHospRaid()
             end
         end
-    end
-    for _,v in ipairs(args) do recursiveCheck(v) end
-end)
+    end)
+end
+autoExecListener()
+
+-- ---------- Initialize Hub ----------
+createHub()

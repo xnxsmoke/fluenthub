@@ -8,23 +8,20 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local dataRemoteEvent = ReplicatedStorage:WaitForChild("BridgeNet2"):WaitForChild("dataRemoteEvent")
 
--- ---------- Coordinates ----------
+-- Coordinates
 local castleCFrame = CFrame.new(432.6329, 4384.6372, -1898.6741)
 local desertCFrame = CFrame.new(463.8988, 4383.7646, -1888.2440)
 local bossRushCFrame = CFrame.new(216.035507, 1594.49414, -4315.56738)
 
--- ---------- Flags ----------
-local standCastleEnabled = false
-local standDesertEnabled = false
-local autoRestartCastle = false
-local autoRestartDesert = false
-local autoRestartLabyrinth = false
-local autoRestartBossRush = false
+-- Flags
+local standCastleEnabled, standDesertEnabled = false, false
+local autoRestartCastle, autoRestartDesert, autoRestartLabyrinth, autoRestartBossRush = false, false, false, false
 local hospRaidEnabled = false
 local autoExecHub = _G.autoExecHub ~= false
-local bossRushDifficulty = "Normal"
+local selectedBossRushDiff = "Normal"
+local minimizedHub = false
 
--- ---------- Helpers ----------
+-- Helpers
 local function safeStandAt(cf)
     local char = player.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -39,44 +36,45 @@ end
 local function safeRejoin(joinFunction)
     task.spawn(function()
         local success = false
-        for i = 1,5 do
+        for i=1,5 do
             task.wait(math.random(3,6))
-            local ok, err = pcall(joinFunction)
-            if ok then
-                success = true
-                break
-            end
+            local ok, _ = pcall(joinFunction)
+            if ok then success = true break end
         end
     end)
 end
 
--- ---------- Mode Functions ----------
+-- Modes
 local function startCastle()
-    fireSafe({{{Event="InfiniteCastleAction", Action="Create"}, "\014"}})
+    fireSafe({ { { Event = "InfiniteCastleAction", Action = "Create" }, "\014" } })
     task.wait(1)
-    fireSafe({{{Dungeon=3604563306, Event="InfiniteCastleAction", Action="Start"}, "\014"}})
+    fireSafe({ { { Dungeon = 3604563306, Event = "InfiniteCastleAction", Action = "Start" }, "\014" } })
     if standCastleEnabled then safeStandAt(castleCFrame) end
 end
 
 local function startDesert()
-    fireSafe({{{Event="InfiniteModeAction", Action="Create"}, "\014"}})
+    fireSafe({ { { Event = "InfiniteModeAction", Action = "Create" }, "\014" } })
     task.wait(1)
-    fireSafe({{{Dungeon=3604563306, Event="InfiniteModeAction", Action="Start"}, "\014"}})
+    fireSafe({ { { Dungeon = 3604563306, Event = "InfiniteModeAction", Action = "Start" }, "\014" } })
     if standDesertEnabled then safeStandAt(desertCFrame) end
 end
 
 local function startBossRush()
-    fireSafe({{{Dungeon=3604563306, Action="Start", Diff=bossRushDifficulty, Event="BossRushAction"}, "\015"}})
+    fireSafe({ { { Dungeon = 3604563306, Action = "Start", Diff = selectedBossRushDiff, Event = "BossRushAction" }, "\015" } })
     safeStandAt(bossRushCFrame)
 end
 
-local function joinHospRaid()
+local function isInHospRaid()
     local ws = game:GetService("Workspace")
-    if ws:FindFirstChild("__MAP") or ws:FindFirstChild("RaidBoss") then return end
-    fireSafe({{{Event="HLRaidAction", Action="Join"}, "\004"}})
+    return ws:FindFirstChild("__MAP") or ws:FindFirstChild("RaidBoss")
 end
 
--- ---------- Create Fluent Hub ----------
+local function joinHospRaid()
+    if isInHospRaid() then return end
+    fireSafe({ { { Event = "HLRaidAction", Action = "Join" }, "\004" } })
+end
+
+-- Create Hub
 local hubCreated = false
 local function createHub()
     if hubCreated then return end
@@ -86,7 +84,7 @@ local function createHub()
         Title = "xnxsmoke Hub",
         SubTitle = "by xnxsmoke",
         TabWidth = 160,
-        Size = UDim2.fromOffset(580,460),
+        Size = UDim2.fromOffset(580, 460),
         Acrylic = true,
         Theme = "Dark",
         MinimizeKey = Enum.KeyCode.LeftControl
@@ -102,48 +100,27 @@ local function createHub()
 
     -- InfCastle
     Tabs.InfCastle:AddButton({Title="Start Infinite Castle", Callback=startCastle})
-    Tabs.InfCastle:AddToggle("StandCastle",{Title="Stand in the Middle", Default=false}):OnChanged(function(v)
-        standCastleEnabled = v
-        if v then safeStandAt(castleCFrame) end
-    end)
-    Tabs.InfCastle:AddToggle("AutoRestartCastle",{Title="Auto Restart on Portal Destroy", Default=false}):OnChanged(function(v)
-        autoRestartCastle = v
-    end)
+    Tabs.InfCastle:AddToggle("StandCastle",{Title="Stand in the Middle", Default=false}):OnChanged(function(v) standCastleEnabled = v if v then safeStandAt(castleCFrame) end end)
+    Tabs.InfCastle:AddToggle("AutoRestartCastle",{Title="Auto-Restart on Portal Destroyed", Default=false}):OnChanged(function(v) autoRestartCastle = v end)
 
     -- InfDesert
     Tabs.InfDesert:AddButton({Title="Start Infinite Desert", Callback=startDesert})
-    Tabs.InfDesert:AddToggle("StandDesert",{Title="Stand in the Middle", Default=false}):OnChanged(function(v)
-        standDesertEnabled = v
-        if v then safeStandAt(desertCFrame) end
-    end)
-    Tabs.InfDesert:AddToggle("AutoRestartDesert",{Title="Auto Restart on Portal Destroy", Default=false}):OnChanged(function(v)
-        autoRestartDesert = v
-    end)
+    Tabs.InfDesert:AddToggle("StandDesert",{Title="Stand in the Middle", Default=false}):OnChanged(function(v) standDesertEnabled = v if v then safeStandAt(desertCFrame) end end)
+    Tabs.InfDesert:AddToggle("AutoRestartDesert",{Title="Auto-Restart on Portal Destroyed", Default=false}):OnChanged(function(v) autoRestartDesert = v end)
 
     -- BossRush
-    local difficultyDropdown = Tabs.BossRush:AddDropdown("BossRushDifficulty", {
-        Title = "Select Difficulty",
-        Values = {"Easy","Normal","Hard","Insane"},
-        Multi = false,
-        Default = 2
-    })
-    difficultyDropdown:OnChanged(function(v) bossRushDifficulty = v end)
-
     Tabs.BossRush:AddButton({Title="Start BossRush", Callback=startBossRush})
-    Tabs.BossRush:AddToggle("AutoRestartBossRush",{Title="Auto-Restart on Rush Ended", Default=false}):OnChanged(function(v)
-        autoRestartBossRush = v
-    end)
-    Tabs.BossRush:AddToggle("StandBossRush",{Title="Stand in the Middle", Default=false}):OnChanged(function(v)
-        if v then safeStandAt(bossRushCFrame) end
-    end)
+    Tabs.BossRush:AddDropdown("BossRushDiff",{Title="Difficulty", Values={"Easy","Normal","Hard","Insane"}, Default=2}):OnChanged(function(v) selectedBossRushDiff=v end)
+    Tabs.BossRush:AddToggle("AutoRestartBossRush",{Title="Auto-Restart on Rush Ended", Default=false}):OnChanged(function(v) autoRestartBossRush=v end)
+    Tabs.BossRush:AddToggle("StandBossRush",{Title="Stand in the Middle", Default=false}):OnChanged(function(v) if v then safeStandAt(bossRushCFrame) end end)
 
     -- HospRaid
-    Tabs.HospRaid:AddToggle("AutoJoinHospRaid",{Title="Auto Join HospRaid", Default=false}):OnChanged(function(v)
-        hospRaidEnabled = v
+    Tabs.HospRaid:AddToggle("HospRaidAuto",{Title="Auto Join HospRaid", Default=false}):OnChanged(function(v)
+        hospRaidEnabled=v
         if v then
             task.spawn(function()
                 while hospRaidEnabled do
-                    task.wait(5)
+                    task.wait(3)
                     joinHospRaid()
                 end
             end)
@@ -151,13 +128,9 @@ local function createHub()
     end)
 
     -- Misc
-    Tabs.Misc:AddToggle("AutoExec",{Title="Auto-Execute Hub", Default=autoExecHub}):OnChanged(function(v)
-        autoExecHub = v
-        _G.autoExecHub = v
-    end)
-    Tabs.Misc:AddParagraph({Title="Info", Content="Hub in beta testing"})
+    Tabs.Misc:AddToggle("AutoExec",{Title="Auto-Execute Hub on Mode Change", Default=autoExecHub}):OnChanged(function(v) autoExecHub=v end)
+    Tabs.Misc:AddToggle("MinimizeHub",{Title="Minimize Hub", Default=false}):OnChanged(function(v) minimizedHub=v Window:SetVisible(not v) end)
 
-    -- Save & Interface Managers
     SaveManager:SetLibrary(Fluent)
     InterfaceManager:SetLibrary(Fluent)
     SaveManager:IgnoreThemeSettings()
@@ -165,37 +138,33 @@ local function createHub()
     SaveManager:SetFolder("xnxsmokeHub/configs")
     InterfaceManager:BuildInterfaceSection(Tabs.Misc)
     SaveManager:BuildConfigSection(Tabs.Misc)
-
     Window:SelectTab(1)
     Fluent:Notify({Title="xnxsmoke Hub", Content="Loaded successfully!", Duration=6})
-    SaveManager:LoadAutoloadConfig()
 end
 
--- ---------- Auto-Execute ----------
-local function detectMode()
-    local ws = game:GetService("Workspace")
-    if ws:FindFirstChild("__MAP") then return "HospRaid"
-    elseif ws:FindFirstChild("PortalCastle") then return "InfCastle"
-    elseif ws:FindFirstChild("PortalDesert") then return "InfDesert"
-    elseif ws:FindFirstChild("BossRushPortal") then return "BossRush"
-    else return nil
-    end
-end
+if not hubCreated then createHub() end
 
-local function autoExecListener()
-    player.CharacterAdded:Connect(function()
-        task.wait(1)
+-- Auto-Exec Loop
+task.spawn(function()
+    while true do
+        task.wait(3)
         if autoExecHub then
-            local mode = detectMode()
-            if mode == "InfCastle" then startCastle()
-            elseif mode == "InfDesert" then startDesert()
-            elseif mode == "BossRush" then startBossRush()
-            elseif mode == "HospRaid" then joinHospRaid()
+            if isInHospRaid() then joinHospRaid()
+            else
+                local ws = game:GetService("Workspace")
+                if ws:FindFirstChild("PortalCastle") then startCastle()
+                elseif ws:FindFirstChild("PortalDesert") then startDesert()
+                elseif ws:FindFirstChild("BossRushPortal") then startBossRush()
+                end
             end
         end
-    end)
-end
-autoExecListener()
+    end
+end)
 
--- ---------- Initialize Hub ----------
-createHub()
+-- Respawn handler
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if standCastleEnabled then safeStandAt(castleCFrame) end
+    if standDesertEnabled then safeStandAt(desertCFrame) end
+    if minimizedHub then Fluent:GetWindow():SetVisible(false) end
+end)
